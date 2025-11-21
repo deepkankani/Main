@@ -1,0 +1,1540 @@
+Header or Proj
+
+managed implementation in class zbp_r_usr_review_proj unique;
+strict;
+with draft;
+define behavior for ZR_USR_REVIEW_PROJ alias UsrRevProj
+persistent table zusr_rview_proj
+draft table zusr_rvew_proj_d
+etag master LocalLastChangedAt
+lock master total etag LastChangedAt
+authorization master ( global )
+{
+  field ( readonly )
+  Uuid,
+  Status,
+  UploadDt,
+  CompletedDt,
+  LocalCreatedBy,
+  LocalCreatedAt,
+  LocalLastChangedBy,
+  LocalLastChangedAt,
+  LastChangedAt;
+
+  //  field ( mandatory) ReviewPeriod, ReviewScen;
+  //  field (readonly : update ) ReviewPeriod, ReviewScen;
+  field ( mandatory : create ) ReviewPeriod, ReviewScen, DueDate;
+  field ( readonly : update ) ReviewPeriod, ReviewScen;
+  field ( numbering : managed )
+
+  Uuid;
+  create ( precheck );
+  update ( features : instance );
+  delete ( features : instance );
+  association _ReviewData { create ( precheck ); with draft; }
+  determination fields on modify { field Attachment; }
+  determination fieldsDel on save { field AttachmentDel; }
+  determination projstatus on modify { create; }
+  validation ValidateData on save { field ReviewScen, ReviewPeriod; create; }
+  action ( features : instance ) initiateWorkflow result [1] $self;
+  action ( features : instance ) SendReminder result [1] $self;
+  action ( features : instance ) markAsCompleted result [1] $self;
+  action ( features : instance ) uploadExcelData result [1] $self;
+  action ( features : instance ) uploadExcelDataDel result [1] $self;
+  draft action Activate optimized;
+  draft action Discard;
+  draft action ( features : instance ) Edit;
+  draft action Resume;
+  draft determine action Prepare { validation ValidateData; }
+  side effects
+  {
+    field Attachment affects entity _ReviewData, field Status;
+    field AttachmentDel affects entity _ReviewData;
+  }
+  mapping for zusr_rview_proj
+    {
+      Uuid               = uuid;
+      ReviewScen         = review_scen;
+      ReviewPeriod       = review_period;
+      FileName           = file_name;
+      Attachment         = attachment;
+      Mimetype           = mimetype;
+      UploadDt           = upload_dt;
+      CompletedDt        = completed_dt;
+      Status             = status;
+      DueDate            = due_dt;
+      FilenameDel        = file_name_del;
+      AttachmentDel      = attachment_del;
+      mimetypeDel        = mimetype_del;
+      ReminderNo         = reminder_no;
+      LocalCreatedBy     = local_created_by;
+      LocalCreatedAt     = local_created_at;
+      LocalLastChangedBy = local_last_changed_by;
+      LocalLastChangedAt = local_last_changed_at;
+      LastChangedAt      = last_changed_at;
+    }
+}
+
+define behavior for ZI_USR_REVIEW_DATA alias UsrRevData
+
+persistent table zusr_rview_data
+draft table zusr_rview_dat_d
+lock dependent by _reviewProj
+authorization dependent by _reviewProj
+
+etag master LocalLastChangedAt
+{
+  field ( mandatory : create, readonly : update ) Email;
+  field ( mandatory ) Name, ldapStatus, LdapStsFasdCmnt, managerEmail;
+  update ( features : instance );
+  delete ( features : instance );
+
+  field ( features : instance ) AbapUserid,
+  HanaUserid,
+  LdapStatus,
+  SUserid,
+  SUsrLstlgn,
+  SUsrExpiry,
+  Name,
+  LdapStsFasdCmnt,
+  ManagerEmail;
+  field ( readonly ) Uuid, RevUuid,
+  ManagerInput,
+  ManagerCmnt,
+  InputShrdBy,
+  InvalidationReason,
+  LocalCreatedBy,
+  LocalCreatedAt,
+  LocalLastChangedBy,
+  LocalLastChangedAt,
+  LastChangedAt;
+  field ( numbering : managed ) uuid;
+  //  determination fields on modify { field ManagerInput ; }
+  validation CheckReviewItems on save { field Email; create; }
+  action ( features : instance ) Invalidate deep parameter ZR_USR_REVIEW_PROJ_ABS result [1] $self;
+  action ( features : instance ) NotifyMgr result [1] $self; // Trigger adhoc workflow to notify manager
+  association _reviewProj { with draft; }
+    side effects
+  {
+  action Invalidate affects entity _reviewProj  ;
+  }
+  mapping for zusr_rview_data
+    {
+      Uuid               = uuid;
+      RevUuid            = rev_uuid;
+      AbapUserid         = abap_userid;
+      HanaUserid         = hana_userid;
+      Email              = email;
+      InputShrdBy        = input_shrd_by;
+      ManagerCmnt        = manager_cmnt;
+      ManagerInput       = manager_input;
+      LdapStatus         = LDAP_STATUS;
+      SUserid            = S_USERID;
+      SUsrLstlgn         = S_USR_LSTLGN;
+      SUsrExpiry         = S_USR_EXPIRY;
+      Name               = NAME;
+      LdapStsFasdCmnt    = LDAP_STS_FASD_CMNT;
+      ManagerEmail       = MANAGER_EMAIL;
+      RecordStatus       = record_status;
+      invalidationReason = invalid_reason;
+      LocalCreatedBy     = local_created_by;
+      LocalCreatedAt     = local_created_at;
+      LocalLastChangedBy = local_last_changed_by;
+      LocalLastChangedAt = local_last_changed_at;
+      LastChangedAt      = last_changed_at;
+    }
+}
+
+Class ZBP_R_USR_REVIEW_PROJ
+under this - lcl_usr_review_UTIL, lhc_usrrevdat, lhc_usrrevproj, lhc_usrrview_constant and you can make as its compostion in RAP so smae behavior defination file for header and item 
+
+CLASS lhc_usrrevdata DEFINITION INHERITING FROM cl_abap_behavior_handler.
+
+  PRIVATE SECTION.
+
+    METHODS get_global_authorizations FOR GLOBAL AUTHORIZATION
+      IMPORTING REQUEST requested_authorizations FOR UsrRevData RESULT result.
+    METHODS get_instance_features FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR UsrRevData RESULT result.
+    METHODS checkreviewitems FOR VALIDATE ON SAVE
+      IMPORTING keys FOR UsrRevData~checkreviewitems.
+    METHODS invalidate FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevData~invalidate RESULT result.
+    METHODS NotifyMgr FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevData~NotifyMgr RESULT result.
+ENDCLASS.
+
+CLASS lhc_usrrevdata IMPLEMENTATION.
+
+  METHOD get_global_authorizations.
+
+  ENDMETHOD.
+
+  METHOD get_instance_features.
+    CLEAR result.
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+        ENTITY UsrRevData BY \_reviewProj
+           FIELDS (  Uuid Status DueDate  )
+           WITH CORRESPONDING #( keys )
+         RESULT DATA(lt_data)
+         ENTITY UsrRevData FIELDS ( uuid RevUuid RecordStatus ManagerInput )
+         WITH CORRESPONDING #( keys )
+         RESULT DATA(lt_data_sts)
+         FAILED failed.
+    DATA(lv_parentid) = lt_data[ 1 ]-uuid.
+    DATA lt_keys1 LIKE lt_data_sts.
+    SELECT uuid FROM zi_usr_review_data
+         WHERE revuuid = @lv_parentid  INTO TABLE @DATA(lt_existing).
+    IF sy-subrc = 0.
+      SORT lt_existing BY uuid.
+    ENDIF.
+
+    " Enable edit to all field only in draft Status else enable manager mail ID only
+    IF lt_data[ 1 ]-Status = '01'.
+      DATA(lv_state) = if_abap_behv=>fc-f-unrestricted.
+      lv_state = if_abap_behv=>fc-f-read_only.
+    ENDIF.
+    " disable edit for entries where manager input is shared
+    DATA(lv_status) = lt_data[ 1 ]-Status.
+    LOOP AT keys ASSIGNING FIELD-SYMBOL(<lfs_key>).
+      READ TABLE lt_data_sts WITH KEY Uuid = <lfs_key>-uuid INTO DATA(ls_data_sts).
+      IF lv_status = '01'.
+        DATA(lv_invalid) = ls_data_sts-RecordStatus.
+        lv_state = if_abap_behv=>fc-f-unrestricted.
+        DATA(lv_allow_mgr_field_chg) = if_abap_behv=>fc-f-unrestricted.
+        DATA(lv_delete) = if_abap_behv=>fc-o-enabled. " Enable delete for new record
+        DATA(lv_notify) = if_abap_behv=>fc-o-disabled.
+      ELSEIF lv_status = '02'.
+        lv_invalid = COND #( WHEN ls_data_sts-ManagerInput IS NOT INITIAL THEN abap_true
+                            ELSE ls_data_sts-RecordStatus ).
+        lv_allow_mgr_field_chg = COND #( WHEN ls_data_sts-ManagerInput IS NOT INITIAL THEN if_abap_behv=>fc-f-read_only
+        WHEN ls_data_sts-RecordStatus = abap_true THEN if_abap_behv=>fc-f-read_only
+                                ELSE if_abap_behv=>fc-f-unrestricted ).
+        lv_state = if_abap_behv=>fc-f-read_only .
+        lv_delete = COND #( WHEN ls_data_sts-ManagerInput IS NOT INITIAL
+                         OR ls_data_sts-RecordStatus = 'X' THEN if_abap_behv=>fc-o-disabled
+                                 ELSE if_abap_behv=>fc-o-enabled ).   " Enable delete for new record
+        lv_notify = COND #( WHEN ls_data_sts-ManagerInput IS NOT INITIAL
+                          OR ls_data_sts-RecordStatus = 'X' THEN if_abap_behv=>fc-o-disabled
+                                  ELSE if_abap_behv=>fc-o-enabled ).
+        READ TABLE lt_existing WITH KEY uuid =  <lfs_key>-uuid TRANSPORTING NO FIELDS.
+        IF sy-subrc <> 0. " New record
+          lv_invalid = abap_true.
+          lv_allow_mgr_field_chg = if_abap_behv=>fc-f-unrestricted .
+          lv_state = if_abap_behv=>fc-f-unrestricted.
+          lv_delete =  if_abap_behv=>fc-o-enabled .   " Enable delete for new record
+        ENDIF.
+      ELSE.
+        lv_invalid = abap_true.
+      ENDIF.
+
+      APPEND VALUE #( %tky = <lfs_key>-%tky
+                      %features-%field-AbapUserid = lv_state
+                      %features-%field-HanaUserid = lv_state
+                      %features-%field-LdapStatus = lv_state
+                      %features-%field-LdapStsFasdCmnt = lv_state
+                      %features-%field-Name = lv_state
+                      %features-%field-SUserid = lv_state
+                      %features-%field-SUsrExpiry = lv_state
+                      %features-%field-SUsrLstlgn = lv_state
+                      %features-%field-ManagerEmail = lv_allow_mgr_field_chg
+                      %features-%delete = lv_delete
+                      %features-%action-NotifyMgr = lv_notify
+                %features-%action-Invalidate = COND #(  WHEN lv_invalid = abap_true THEN if_abap_behv=>fc-o-disabled
+                     ELSE  if_abap_behv=>fc-o-enabled )
+                      ) TO result.
+      CLEAR: lv_allow_mgr_field_chg,lv_notify,lv_invalid,lv_state.
+    ENDLOOP.
+  ENDMETHOD.
+
+  METHOD CheckReviewItems.
+    " validate Duplicate items
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+         ENTITY UsrRevData
+           FIELDS ( Email )
+           WITH CORRESPONDING #( keys )
+         RESULT DATA(lt_revdata).
+
+    " Find Duplicate items with same mail id and record status is valid
+    SELECT FROM zi_usr_review_data AS data INNER JOIN @lt_revdata
+      AS local ON     local~Uuid <> data~Uuid
+      AND data~RevUuid = local~RevUuid
+                                    AND upper( local~Email )  = upper( data~Email )
+                                    AND data~RecordStatus <> 'X'
+  FIELDS data~Uuid,
+         local~Uuid AS LocalId, data~Email AS email
+  INTO TABLE @DATA(lt_duplicates).
+    LOOP AT lt_duplicates INTO DATA(ls_duplicate).
+      INSERT VALUE #( uuid = ls_duplicate-LocalId  ) INTO TABLE failed-usrrevdata.
+      INSERT VALUE #( uuid = ls_duplicate-LocalId
+    %msg = me->new_message(
+                    id = 'ZUSER_REVIEW'
+                    number = '000'
+                    severity = if_abap_behv_message=>severity-Error
+                    v1 = 'Entry with same mail id -'
+                    v2 = | { ls_duplicate-email }  already exists| )
+*                  %msg           = new_message_with_text( text = |Entry with same mail id { ls_duplicate-email }  already exists| )
+                       ) INTO TABLE reported-usrrevdata.
+    ENDLOOP.
+
+    " Find entries with empty mail ids
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+         ENTITY UsrRevData
+           FIELDS ( RevUuid Email )
+           WITH CORRESPONDING #( keys )
+         RESULT DATA(lt_revdata_empty).
+
+    LOOP AT lt_revdata_empty ASSIGNING FIELD-SYMBOL(<lfs_revdata>).
+      IF <lfs_revdata>-Email IS INITIAL.
+        INSERT VALUE #( %tky = <lfs_revdata>-%tky ) INTO TABLE failed-usrrevdata.
+        INSERT VALUE #( %tky = <lfs_revdata>-%tky
+    %msg = me->new_message(
+                    id = 'ZUSER_REVIEW'
+                    number = '000'
+                    severity = if_abap_behv_message=>severity-Error
+                    v1 = 'Email cannot be blank' ) ) INTO TABLE reported-usrrevdata.
+      ENDIF.
+      " Find entries with empty Manager Email ids
+      IF <lfs_revdata>-ManagerEmail IS INITIAL.
+        INSERT VALUE #( %tky = <lfs_revdata>-%tky ) INTO TABLE failed-usrrevdata.
+        INSERT VALUE #( %tky = <lfs_revdata>-%tky
+    %msg = me->new_message(
+                    id = 'ZUSER_REVIEW'
+                    number = '000'
+                    severity = if_abap_behv_message=>severity-Error
+                    v1 = 'Manager Email cannot be blank' )  %element-manageremail = if_abap_behv=>mk-on ) INTO TABLE reported-usrrevdata.
+      ENDIF.
+    ENDLOOP.
+
+
+
+
+    " Find entries with same ABAP user and different mail ids or same HANA user id with different mail ids
+
+    SELECT data~Uuid, data~AbapUserid, data~HanaUserid, data~email FROM zi_usr_review_data
+    AS data INNER JOIN @lt_revdata_empty
+      AS local ON     local~Uuid <> data~Uuid
+      AND local~RevUuid = data~RevUuid
+      AND local~AbapUserid IS NOT INITIAL
+      AND local~HanaUserid IS NOT INITIAL
+                                    AND ( upper( local~AbapUserid )  = upper( data~AbapUserid )
+                                          OR upper( local~HanaUserid )  = upper( data~HanaUserid ) )
+                                    AND data~RecordStatus <> 'X' " record is not Invalidated
+                                    INTO TABLE @DATA(lt_invalid).
+    IF sy-subrc = 0.
+      " Loop through the entries and raise error with a message for duplicate entries
+      LOOP AT lt_invalid INTO DATA(ls_invalid).
+        INSERT VALUE #( uuid = ls_invalid-uuid ) INTO TABLE failed-usrrevdata.
+        INSERT VALUE #( uuid = ls_invalid-uuid
+        %msg = me->new_message(
+                id = 'ZUSER_REVIEW'
+                number = '001'
+                severity = if_abap_behv_message=>severity-Error
+                 )
+                 ) INTO TABLE reported-usrrevdata.
+      ENDLOOP.
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD Invalidate.
+    " Check manager comments provided
+    IF NOT keys[ 1 ]-%param-manager_cmnt IS INITIAL.
+      " Mark entry as Invalid by setting flag
+      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+                 ENTITY UsrRevData
+                    UPDATE FIELDS ( RecordStatus InvalidationReason )
+                     WITH VALUE #( FOR ls_revitem IN keys
+                          ( %tky  = ls_revitem-%tky
+                            RecordStatus =  'X' "Invalid
+                            InvalidationReason = ls_revitem-%param-manager_cmnt " Comment from popup
+                            %control = VALUE #( RecordStatus = if_abap_behv=>mk-on
+                              InvalidationReason = if_abap_behv=>mk-on )
+                              )  )
+                         REPORTED DATA(lt_update_reported) FAILED failed.
+      reported = CORRESPONDING #( DEEP lt_update_reported ).
+
+      IF failed IS INITIAL.
+        "Read changed data for action result
+        READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+          ENTITY UsrRevData
+          ALL FIELDS WITH
+          CORRESPONDING #( keys )
+          RESULT DATA(lt_revdata).
+
+        APPEND VALUE #(
+                       %msg = me->new_message(
+                        id = 'ZUSER_REVIEW'
+                        number = '000'
+                        severity = if_abap_behv_message=>severity-success
+                        v1 = 'Records marked as invalid successfully'
+
+         ) ) TO reported-usrrevproj.
+
+        result = VALUE #( FOR ls_revdata IN lt_revdata
+                 ( %tky   = ls_revdata-%tky
+                   %param = ls_revdata ) ).
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD NotifyMgr.
+    " trigger workflow for selected records
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+       ENTITY UsrRevData ALL FIELDS WITH
+       CORRESPONDING #( keys ) RESULT DATA(lt_revdata)
+       ENTITY UsrRevData BY \_ReviewProj
+             ALL FIELDS WITH CORRESPONDING #( keys )
+       RESULT DATA(lt_revproj).
+
+    " Remove invalidated records
+    SORT lt_revdata BY RecordStatus.
+    DELETE lt_revdata WHERE RecordStatus = 'X'.
+
+    " Exclude entries which have already a feedback
+    SORT lt_revdata BY ManagerInput.
+    DELETE lt_revdata WHERE ManagerInput IS NOT INITIAL.
+
+    SORT lt_revdata BY ManagerEmail.
+    DELETE ADJACENT DUPLICATES FROM lt_revdata COMPARING ManagerEmail.
+
+    IF lt_revdata IS NOT INITIAL.
+
+      DATA(ls_proj) = lt_revproj[ 1 ].
+      " prepare string of manager ids for mail notification
+      DATA(lv_mgr_email) = REDUCE #( INIT lv_text = ``  FOR ls_data IN lt_revdata NEXT lv_text = lv_text && ls_data-ManagerEmail && ', ' ).
+      " Populate Mail subject
+      DATA(lv_appurl) = |(ReviewPeriod='{ ls_proj-ReviewPeriod }',ReviewScen='01')|.
+      DATA(lv_subject) =  ls_proj-RevTxt && ' - ' && ls_proj-ReviewPeriod .
+      lcl_usr_review_util=>triggerworkflow( iv_mail_receivers =  lv_mgr_email
+      iv_subject = lv_subject iv_deadline = ls_proj-DueDate iv_appURL = lv_appurl ).
+
+      APPEND VALUE #(
+                     %msg = me->new_message(
+                      id = 'ZUSER_REVIEW'
+                      number = '000'
+                      severity = if_abap_behv_message=>severity-success
+                      v1 = 'Managers Notified successfully'
+
+       ) ) TO reported-usrrevproj.
+
+      "Read changed data for action result
+      READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+        ENTITY UsrRevData
+        ALL FIELDS WITH
+        CORRESPONDING #( keys )
+        RESULT DATA(lt_revdata_result).
+
+      result = VALUE #( FOR ls_revdata IN lt_revdata_result
+               ( %tky   = ls_revdata-%tky
+                 %param = ls_revdata ) ).
+    ELSE.
+      APPEND VALUE #(
+           %tky = keys[ 1 ]-%tky
+           %state_area = 'Notification not possible'
+           %msg = me->new_message(
+            id = 'ZUSER_REVIEW'
+            number = '000'
+            severity = if_abap_behv_message=>severity-error
+            v1 = 'No valid Review items to notify'
+       ) ) TO reported-usrrevdata.
+      INSERT VALUE #( %tky = keys[ 1 ]-%tky ) INTO TABLE failed-usrrevdata.
+
+    ENDIF.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lhc_UsrRevProj DEFINITION INHERITING FROM cl_abap_behavior_handler.
+  PRIVATE SECTION.
+    DATA mv_actor TYPE ZZACTor.
+    METHODS get_global_authorizations FOR GLOBAL AUTHORIZATION
+      IMPORTING REQUEST requested_authorizations FOR UsrRevProj RESULT result.
+    METHODS get_instance_features FOR INSTANCE FEATURES
+      IMPORTING keys REQUEST requested_features FOR UsrRevProj RESULT result.
+
+    METHODS uploadExcelData FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevProj~uploadExcelData RESULT result.
+
+    METHODS fields FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR UsrRevProj~fields.
+    METHODS initiateWorkflow FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevProj~initiateWorkflow RESULT result.
+
+    METHODS markAsCompleted FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevProj~markAsCompleted RESULT result.
+    METHODS ValidateData FOR VALIDATE ON SAVE
+      IMPORTING keys FOR UsrRevProj~ValidateData.
+    METHODS precheck_create FOR PRECHECK
+      IMPORTING entities FOR CREATE UsrRevProj.
+    METHODS SendReminder FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevProj~SendReminder RESULT result.
+    METHODS precheck_cba_Reviewdata FOR PRECHECK
+      IMPORTING entities FOR CREATE UsrRevProj\_Reviewdata.
+    METHODS projstatus FOR DETERMINE ON MODIFY
+      IMPORTING keys FOR UsrRevProj~projstatus.
+    METHODS uploadExcelDataDel FOR MODIFY
+      IMPORTING keys FOR ACTION UsrRevProj~uploadExcelDataDel RESULT result.
+
+    METHODS fieldsDel FOR DETERMINE ON SAVE
+      IMPORTING keys FOR UsrRevProj~fieldsDel.
+*    METHODS massDeleteData FOR MODIFY
+*      IMPORTING keys FOR ACTION UsrRevProj~massDeleteData RESULT result.
+*    METHODS massDeleteData FOR MODIFY
+*      IMPORTING keys FOR ACTION UsrRevProj~massDeleteData RESULT result.
+*    METHODS triggerworkflow
+*      IMPORTING
+*        iv_mail_receivers TYPE string
+*        iv_subject        TYPE string OPTIONAL
+*        iv_remindetxt     TYPE string OPTIONAL
+*        iv_deadline       TYPE d OPTIONAL.
+
+ENDCLASS.
+
+CLASS lhc_UsrRevProj IMPLEMENTATION.
+
+  METHOD get_global_authorizations.
+    AUTHORITY-CHECK OBJECT 'ZUSR_RVIEW'        " Admin
+           ID 'ACTOR' FIELD 'ADM'
+           ID 'ACTVT' FIELD '02'.
+    IF sy-subrc <> 0.
+      AUTHORITY-CHECK OBJECT 'ZUSR_RVIEW' " Auditor
+     ID 'ACTOR' FIELD 'AUD'
+      ID 'ACTVT' FIELD '03'.
+      IF sy-subrc <> 0.
+        result-%update = if_abap_behv=>auth-unauthorized.
+        result-%action-Edit = if_abap_behv=>auth-unauthorized.
+        result-%delete = if_abap_behv=>auth-unauthorized.
+        result-%create = if_abap_behv=>auth-unauthorized.
+        APPEND VALUE #( %msg    = new_message(
+                                        id       = 'ZUSER_REVIEW'
+          number   = '000'
+          v1 = 'Unauthorized access'
+          severity = if_abap_behv_message=>severity-error )
+                        %global = if_abap_behv=>mk-on
+                      ) TO reported-usrrevproj.
+
+      ENDIF.
+    ENDIF.
+
+    " Check authorization for special actions
+    AUTHORITY-CHECK OBJECT 'ZUARADM'
+           ID 'ACTVT' FIELD '16'.
+    IF sy-subrc <> 0.
+      result-%action-markAsCompleted = if_abap_behv=>auth-unauthorized.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD get_instance_features.
+    CLEAR result.
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+        ENTITY UsrRevProj
+           FIELDS (  Uuid Status DueDate ReminderNo )
+           WITH CORRESPONDING #( keys )
+         RESULT DATA(lt_data)
+         FAILED failed.
+
+
+    LOOP AT lt_data ASSIGNING FIELD-SYMBOL(<lfs_data>).
+      IF <lfs_data>-%is_draft = if_abap_behv=>mk-on.
+        result = VALUE #( BASE result
+                ( %is_draft = <lfs_data>-%is_draft
+                  %key = <lfs_data>-%key
+                  %features-%action-markAsCompleted = if_abap_behv=>fc-o-disabled
+              %features-%action-initiateWorkflow =  if_abap_behv=>fc-o-disabled
+
+    " Disable action based on status
+     %features-%action-SendReminder  = if_abap_behv=>fc-o-disabled
+
+              ) ).
+      ELSE.
+
+        result = VALUE #( BASE result
+                ( %is_draft = <lfs_data>-%is_draft
+                %key = <lfs_data>-%key
+                  %features-%action-markAsCompleted = COND #( WHEN <lfs_data>-Status = '03'
+                                                                THEN if_abap_behv=>fc-o-disabled
+                                                                ELSE if_abap_behv=>fc-o-enabled )
+              %features-%action-initiateWorkflow = COND #( WHEN <lfs_data>-Status = '01'
+                                                                THEN if_abap_behv=>fc-o-enabled
+                                                                ELSE if_abap_behv=>fc-o-disabled )
+        " Disable data edit after status is completed
+         %action-Edit  = COND #(
+                          WHEN <lfs_data>-Status = '03' THEN if_abap_behv=>fc-o-disabled
+          ELSE  if_abap_behv=>fc-o-enabled )
+
+        " Disable action based on status
+         %features-%action-SendReminder  = COND #( WHEN <lfs_data>-Status = '02' and <lfs_data>-ReminderNo < 3
+                                                                THEN if_abap_behv=>fc-o-enabled
+
+                                                                ELSE if_abap_behv=>fc-o-disabled )
+        " Enabled only for Draft status
+        %features-%delete = COND #( WHEN <lfs_data>-Status = '01'
+                                                                THEN if_abap_behv=>fc-o-enabled
+                                                                ELSE if_abap_behv=>fc-o-disabled )
+
+                 ) ).
+      ENDIF.
+    ENDLOOP.
+
+  ENDMETHOD.
+
+  METHOD uploadExcelData.
+    TYPES: BEGIN OF lty_excel_data,
+             abap_userid        TYPE string,
+             hana_userid        TYPE string,
+             email              TYPE string,
+             ldap_status        TYPE string,
+             s_userid           TYPE string,
+             s_usr_lstlgn       TYPE string,
+             s_usr_expiry       TYPE string,
+             name               TYPE string,
+             ldap_sts_fasd_cmnt TYPE string,
+             manager_email      TYPE string,
+             manager_input      TYPE string,
+             manager_cmnt       TYPE string,
+             input_shrd_by      TYPE string,
+           END OF lty_excel_data.
+    DATA lv_attach_xst TYPE xstring.
+    DATA: lt_excel_data TYPE STANDARD TABLE OF lty_excel_data.
+
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj
+      ALL FIELDS WITH
+      CORRESPONDING #( keys )
+      RESULT DATA(lt_data).
+    DATA(ls_key) = keys[ 1 ].
+    DATA(lv_attachment) = lt_data[ 1 ]-attachment.
+
+    " Validate data
+    IF lv_attachment IS INITIAL.
+      "Set failed keys
+      APPEND VALUE #( %cid = ls_key-%cid_ref  )
+             TO failed-usrrevproj.
+      APPEND VALUE #( %cid = ls_key-%cid_ref
+                          %msg = new_message(
+                                   id       = 'ZUSER_REVIEW'
+          number   = '000'
+          v1 = 'Attachment data cannot be blank'
+          severity = if_abap_behv_message=>severity-error
+                                 ) )
+                 TO reported-usrrevproj.
+      RETURN.
+    ENDIF.
+
+    DATA(lo_pattern) = xco_cp_xlsx_selection=>pattern_builder->simple_from_to( )->get_pattern( ).
+    lv_attach_xst = lv_attachment.
+
+
+* Read excel data
+    TRY.
+        DATA(lo_document) = xco_cp_xlsx=>document->for_file_content( lv_attach_xst )->read_access( ).
+        LOOP AT lo_document->get_workbook( )->worksheet->all->get( ) INTO DATA(lo_sheet).
+
+
+          lo_sheet->select( lo_pattern
+            )->row_stream(
+            )->operation->write_to( REF #( lt_excel_data )
+            )->set_value_transformation( xco_cp_xlsx_read_access=>value_transformation->string_value
+            )->execute( ).
+        ENDLOOP.
+      CATCH cx_xco_runtime_exception INTO DATA(lo_exception).
+        DATA(lv_message) = lo_exception->get_text( ).
+        "Set failed keys
+        APPEND VALUE #( %cid = ls_key-%cid_ref  )
+               TO failed-usrrevproj.
+        APPEND VALUE #( %cid = ls_key-%cid_ref
+                            %msg = new_message(
+                                     id       = 'ZUSER_REVIEW'
+            number   = '000'
+            v1 = lv_message
+            severity = if_abap_behv_message=>severity-error
+                                   ) )
+                   TO reported-usrrevproj.
+        RETURN.
+    ENDTRY.
+
+    DELETE lt_excel_data INDEX 1. " Remove header data
+
+** Remove Duplicate entries.
+    SORT lt_excel_data BY email.
+    DELETE ADJACENT DUPLICATES FROM lt_excel_data COMPARING email.
+
+** Prepare the datatypes to store the data from internal table lt_excel_data to child entity through EML
+    DATA lt_att_create TYPE TABLE FOR CREATE zr_usr_review_proj\_ReviewData.
+    DATA lv_date TYPE d.
+    LOOP AT lt_excel_data ASSIGNING FIELD-SYMBOL(<lfs_data>).
+      " Process only valid data
+      TRY.
+          " Check and convert dates to internal format
+          IF <lfs_data>-S_Usr_Lstlgn IS NOT INITIAL AND to_upper( <lfs_data>-S_Usr_Lstlgn ) <> 'NEVER'.
+*          replace all OCCURRENCES OF '.' in <lfs_data>-S_Usr_Lstlgn with '/'.
+            cl_abap_datfm=>conv_date_ext_to_int( EXPORTING im_datext = <lfs_data>-S_Usr_Lstlgn im_datfmdes = '1'
+            IMPORTING ex_datint = lv_date  ).
+            <lfs_data>-S_Usr_Lstlgn = CONV #( lv_date ).
+          ENDIF.
+          IF <lfs_data>-S_Usr_Expiry IS NOT INITIAL.
+            cl_abap_datfm=>conv_date_ext_to_int( EXPORTING im_datext = <lfs_data>-S_Usr_Expiry im_datfmdes = '1'
+            IMPORTING ex_datint = lv_date  ).
+            <lfs_data>-S_Usr_Expiry = CONV #( lv_date ).
+          ENDIF.
+        CATCH cx_abap_datfm_no_date cx_abap_datfm_invalid_date cx_abap_datfm_format_unknown cx_abap_datfm_ambiguous
+        INTO DATA(lr_exception).
+          DATA(lv_msg) = lr_exception->get_text( ).
+          "handle exception
+          APPEND VALUE #( %tky = lt_data[ 1 ]-%tky
+*                    %msg = new_message_with_text( severity = if_abap_behv_message=>severity-success
+                                           %msg = me->new_message(
+         id = 'ZUSER_REVIEW'
+         number = '000'
+         severity = ms-information
+             v1 = 'Invalid date field entries excluded'
+             v2 = |: { <lfs_data>-email  } | )
+             ) TO reported-usrrevproj.
+          <lfs_data>-email = abap_true.
+      ENDTRY.
+
+    ENDLOOP.
+    " Skip invalid entries from processing further
+    DELETE lt_excel_data WHERE email = abap_true.
+
+    lt_att_create = VALUE #( (  %cid_ref  = keys[ 1 ]-%cid_ref
+                                %is_draft = keys[ 1 ]-%is_draft
+                                Uuid = keys[ 1 ]-Uuid
+                                %target   = VALUE #( FOR ls_data IN lt_excel_data (
+                                %cid = ls_data-abap_userid
+                                %is_draft   = keys[ 1 ]-%is_draft
+                                revuuid = ls_key-Uuid
+                                AbapUserid = ls_data-abap_userid
+                                HanaUserid = ls_data-hana_userid
+                                Email = ls_data-email
+                                LdapStatus = ls_data-ldap_status
+                                 SUserid = ls_data-s_userid
+                                 SUsrLstlgn = ls_data-s_usr_lstlgn
+                                 SUsrExpiry = ls_data-S_Usr_Expiry
+                                  Name =  ls_data-name
+                                  LdapStsFasdCmnt =  ls_data-ldap_sts_fasd_cmnt
+                                  ManagerEmail =  ls_data-manager_email
+
+                                  %control = VALUE #( revuuid = if_abap_behv=>mk-on
+                                                     AbapUserid = if_abap_behv=>mk-on
+                                                     HanaUserid = if_abap_behv=>mk-on
+                                                     Email = if_abap_behv=>mk-on
+                                                     LdapStatus = if_abap_behv=>mk-on
+                                                     SUserid = if_abap_behv=>mk-on
+                                                     SUsrLstlgn =  if_abap_behv=>mk-on
+                                                     SUsrExpiry =  if_abap_behv=>mk-on
+                                                      Name =  if_abap_behv=>mk-on
+                                                      LdapStsFasdCmnt =  if_abap_behv=>mk-on
+                                                      ManagerEmail =  if_abap_behv=>mk-on
+
+                                                      ) ) ) ) ).
+
+** Create the records from the new attached CSV file
+    MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+    ENTITY UsrRevProj
+    CREATE BY \_ReviewData
+    AUTO FILL CID
+    WITH lt_att_create.
+    APPEND VALUE #( %tky = lt_data[ 1 ]-%tky ) TO mapped-usrrevproj.
+    APPEND VALUE #( %tky = lt_data[ 1 ]-%tky
+*                    %msg = new_message_with_text( severity = if_abap_behv_message=>severity-success
+                                                 %msg = me->new_message(
+               id = 'ZUSER_REVIEW'
+               number = '000'
+               severity = ms-success
+               v1 = 'Excel Data Loaded Successfully' )
+                   ) TO reported-usrrevproj.
+
+    " Update status to 01(Draft) after upload only for first instance
+*    IF lt_data[ 1 ]-status IS INITIAL or lt_data[ 1 ]-status = '01'. " Draft.
+    MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+     ENTITY UsrRevProj
+     UPDATE FROM VALUE #( ( %is_draft = keys[ 1 ]-%is_draft
+                            %key = keys[ 1 ]-%key
+*                              status     =  '01'
+                            Attachment = ''
+                            Mimetype = ''
+                            UploadDt = cl_abap_context_info=>get_system_date( )
+                           " %data     = VALUE #( status = 'P' )
+                            %control  = VALUE #( " status = if_abap_behv=>mk-on
+                                               Attachment = if_abap_behv=>mk-on
+                            Mimetype = if_abap_behv=>mk-on
+                            UploadDt = if_abap_behv=>mk-on  ) ) )
+     MAPPED DATA(lt_mapped_update)
+     REPORTED DATA(lt_reported_update)
+     FAILED DATA(lt_failed_update).
+*    ENDIF.
+
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+   ENTITY UsrRevProj
+   ALL FIELDS WITH
+   CORRESPONDING #( keys )
+   RESULT DATA(lt_file).
+
+    result = VALUE #( FOR ls_file IN lt_file ( %tky   = ls_file-%tky
+
+                                               %param = ls_file ) ).
+
+  ENDMETHOD.
+
+  METHOD fields.
+    " Initiate action based on change in attachment button
+    IF keys[ 1 ]-%is_draft = '01'.
+
+      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj
+      EXECUTE uploadexceldata
+      FROM CORRESPONDING #( keys ).
+
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD initiateWorkflow.
+    " Get all approvers info to be sent
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj ALL FIELDS WITH
+      CORRESPONDING #( keys ) RESULT DATA(lt_revproj)
+      ENTITY UsrRevProj BY \_ReviewData
+            ALL FIELDS WITH CORRESPONDING #( keys )
+      RESULT DATA(lt_revdata).
+
+    " Remove invalidated records
+    SORT lt_revdata BY RecordStatus.
+    DELETE lt_revdata WHERE RecordStatus = 'X'.
+
+    " Exclude entries which have already a feedback
+    SORT lt_revdata BY ManagerInput.
+    DELETE lt_revdata WHERE ManagerInput IS NOT INITIAL.
+
+    " Get Unique Manager Emails
+    SORT lt_revdata BY ManagerEmail.
+    DELETE ADJACENT DUPLICATES FROM lt_revdata COMPARING ManagerEmail.
+    IF lt_revdata IS INITIAL.
+      APPEND VALUE #( %tky = keys[ 1 ]-%tky ) TO failed-usrrevproj.
+      APPEND VALUE #(
+                    %tky = keys[ 1 ]-%tky
+                    %state_area = 'Review Intiaiton not possible'
+*              %path = value #( Student-%tky = student_exam_subject[ key id
+*                               source-%tky = ls_fees-%tky ]-target-%tky )
+                    %msg = me->new_message(
+                     id = 'ZUSER_REVIEW'
+                     number = '000'
+                     severity = if_abap_behv_message=>severity-error
+                     v1 = 'No Review items present'
+      ) ) TO reported-usrrevproj.
+      RETURN.
+    ENDIF.
+
+*    " Exclude Record Status = X since these are marked as Invalid
+*    LOOP AT lt_revdata ASSIGNING FIELD-SYMBOL(<lfs_revdata>) WHERE RecordStatus IS NOT INITIAL.
+*      " validate for empty mail ids
+*      IF <lfs_revdata>-ManagerEmail IS INITIAL.
+*        APPEND VALUE #( %tky = keys[ 1 ]-%tky ) TO failed-usrrevproj.
+*        APPEND VALUE #(
+*                      %tky = keys[ 1 ]-%tky
+*                      %state_area = 'Review Intiaiton not possible'
+**              %path = value #( Student-%tky = student_exam_subject[ key id
+**                               source-%tky = ls_fees-%tky ]-target-%tky )
+*                      %msg = me->new_message(
+*                       id = 'ZUSER_REVIEW'
+*                       number = '000'
+*                       severity = if_abap_behv_message=>severity-error
+*                       v1 = 'Not all items have Manager details'
+*        ) ) TO reported-usrrevproj.
+*        RETURN.
+*      ENDIF.
+*    ENDLOOP.
+
+
+    DATA(ls_proj) = lt_revproj[ 1 ].
+    DATA(lv_appurl) = |(ReviewPeriod='{ ls_proj-ReviewPeriod }',ReviewScen='01')|.
+    " Validate Due Date has been provided
+    IF ls_proj-DueDate IS INITIAL.
+      APPEND VALUE #( %tky = keys[ 1 ]-%tky ) TO failed-usrrevproj.
+      APPEND VALUE #(
+                    %tky = keys[ 1 ]-%tky
+                    %state_area = 'Review Intiaiton not possible'
+                    %msg = me->new_message(
+                     id = 'ZUSER_REVIEW'
+                     number = '000'
+                     severity = if_abap_behv_message=>severity-error
+                     v1 = 'Please Maintain Review Due Date'
+      ) ) TO reported-usrrevproj.
+      RETURN.
+    ENDIF.
+
+    " Populate Mail subject
+    DATA(lv_subject) =  ls_proj-RevTxt && ' - ' && ls_proj-ReviewPeriod .
+
+
+
+    DATA(lv_str) = REDUCE #( INIT lv_text = ``  FOR ls_data IN lt_revdata NEXT lv_text = lv_text && ls_data-ManagerEmail && ', ' ).
+    " Check for empty mail IDs
+    lcl_usr_review_util=>triggerworkflow( iv_mail_receivers =  lv_str iv_subject = lv_subject
+    iv_deadline = ls_proj-DueDate iv_appurl = lv_appurl ).
+
+    " Change status to Initiated
+    MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+             ENTITY UsrRevProj
+                UPDATE FROM VALUE #( FOR key IN keys
+                ( Uuid = key-Uuid
+                  Status = '02' " Initiated
+                  %control-Status = if_abap_behv=>mk-on ) )
+                FAILED failed
+                REPORTED reported.
+
+    APPEND VALUE #( %key = ls_proj-%key
+                          %msg = me->new_message(
+                 id = 'ZUSER_REVIEW'
+                 number = '000'
+                 severity = ms-success
+                 v1 = 'Workflow Initiated Successfully' )
+                         ) TO reported-usrrevproj.
+
+    "Read changed data for action result
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj
+      ALL FIELDS WITH
+      CORRESPONDING #( keys )
+      RESULT DATA(lt_projects).
+
+    result = VALUE #( FOR ls_project IN lt_projects
+             ( %tky   = ls_project-%tky
+               %param = ls_project ) ).
+  ENDMETHOD.
+
+  METHOD markAsCompleted.
+    " Validate if project is ready for completion
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+          ENTITY UsrRevProj ALL FIELDS WITH
+          CORRESPONDING #( keys ) RESULT DATA(lt_revproj)
+          ENTITY UsrRevProj BY \_ReviewData
+                ALL FIELDS WITH CORRESPONDING #( keys )
+          RESULT DATA(lt_revdata).
+
+    " Ignore invalid entries
+    SORT lt_revdata BY RecordStatus.
+    DELETE lt_revdata WHERE RecordStatus = 'X'.
+    SORT lt_revdata BY ManagerInput.
+    READ TABLE lt_revdata WITH KEY managerInput = '' BINARY SEARCH TRANSPORTING NO FIELDS.
+    IF sy-subrc = 0.
+      " Warning message in a dialog box to confirm completion
+
+*      APPEND VALUE #( %key =  keys[ 1 ]-%key  ) TO failed-usrrevproj.
+      APPEND VALUE #(
+               %tky =  keys[ 1 ]-%tky
+               %msg = me->new_message(
+                id = 'ZUSER_REVIEW'
+                number = '000'
+                severity = if_abap_behv_message=>severity-warning
+                v1 = 'Are you sure to Complete Review?, '
+                v2 = 'Not all items have been Reviewed'
+
+ ) ) TO reported-usrrevproj.
+*    ELSE.
+*      " Warn before a project is completed
+*      APPEND VALUE #( %tky = keys[ 1 ]-%tky
+*                           %msg = me->new_message(
+*                  id = 'ZUSER_REVIEW'
+*                  number = '000'
+*                  severity = if_abap_behv_message=>severity-warning
+*                  v1 = 'Are you sure to Complete Review?, '
+*                  v2 = ' This cannot be Undone') )
+*                  TO reported-usrrevproj.
+    ENDIF.
+    MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+             ENTITY UsrRevProj
+                UPDATE FROM VALUE #( FOR key IN keys
+                ( Uuid = key-Uuid
+                  Status = '03' " Completed
+                  CompletedDt = cl_abap_context_info=>get_system_date( )
+                  %control = VALUE #( Status = if_abap_behv=>mk-on
+                  CompletedDt = if_abap_behv=>mk-on ) ) )
+                FAILED failed
+                REPORTED reported.
+
+    "Read changed data for action result
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj
+      ALL FIELDS WITH
+      CORRESPONDING #( keys )
+      RESULT DATA(lt_projects).
+
+    result = VALUE #( FOR ls_project IN lt_projects
+             ( %tky   = ls_project-%tky
+               %param = ls_project ) ).
+
+
+  ENDMETHOD.
+
+  METHOD ValidateData.
+
+    " Find entries with empty Manager Email ids
+
+
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+        ENTITY UsrRevProj
+          FIELDS ( ReviewScen ReviewPeriod )
+          WITH CORRESPONDING #( keys )
+        RESULT DATA(lt_revdata).
+
+    IF lt_revdata IS NOT INITIAL.
+      SELECT FROM zr_usr_review_proj FIELDS uuid
+                                  FOR ALL ENTRIES IN @lt_revdata
+                                    WHERE ReviewScen  =  @lt_revdata-ReviewScen
+                                    AND ReviewPeriod = @lt_revdata-ReviewPeriod
+
+              INTO TABLE @DATA(lt_existing).
+      IF sy-subrc = 0. " Entry already exists
+        APPEND VALUE #( %tky = lt_revdata[ 1 ]-%tky ) TO failed-usrrevproj.
+
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD precheck_create.
+    " Read existing entries to avoid duplicates
+
+*    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+*         ENTITY UsrRevData
+*           FIELDS ( AbapUserid Email )
+*           WITH CORRESPONDING #( entities )
+*         RESULT DATA(lt_revdata).
+*    IF sy-subrc = 0.
+*      APPEND VALUE #( %cid = entities[ 1 ]-%cid  %create = if_abap_behv=>mk-on ) TO failed-usrrevproj.
+*
+*      APPEND VALUE #( %cid = entities[ 1 ]-%cid
+*                      %create = if_abap_behv=>mk-on
+*                      %msg = me->new_message(
+*             id = 'ZUSER_REVIEW'
+*             number = '000'
+*             severity = ms-error
+*             v1 = 'Entry already exists :'
+*             v2 = lt_revdata[ 1 ]-Email )
+*                     ) TO reported-usrrevproj.
+*      RETURN.
+
+    " Validate for mandatory fields manager email, ldap status, ldap comments, complete user name
+
+
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+         ENTITY UsrRevData
+           FIELDS ( ManagerEmail LdapStatus LdapStsFasdCmnt Name )
+           WITH CORRESPONDING #( entities )
+         RESULT DATA(lt_revdata).
+    " check and raise error for missing mandatory fields
+    IF sy-subrc = 0.
+      LOOP AT lt_revdata ASSIGNING FIELD-SYMBOL(<lfs_revdata>).
+        IF <lfs_revdata>-ManagerEmail IS INITIAL OR
+           <lfs_revdata>-LdapStatus IS INITIAL OR
+           <lfs_revdata>-LdapStsFasdCmnt IS INITIAL OR
+           <lfs_revdata>-Name IS INITIAL.
+          INSERT VALUE #( %tky = <lfs_revdata>-%tky ) INTO TABLE failed-usrrevdata.
+          INSERT VALUE #( %tky = <lfs_revdata>-%tky
+      %msg = me->new_message(
+                 id = 'ZUSER_REVIEW'
+                 number = '000'
+                 severity = if_abap_behv_message=>severity-Error
+                 v1 = 'Mandatory fields cannot be blank' )  %element-manageremail = if_abap_behv=>mk-on
+                                                         %element-ldapstatus = if_abap_behv=>mk-on
+                                                         %element-ldapstsfasdcmnt = if_abap_behv=>mk-on
+                                                         %element-name = if_abap_behv=>mk-on ) INTO TABLE reported-usrrevdata.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+
+    SELECT FROM zr_usr_review_proj FIELDS uuid
+                                FOR ALL ENTRIES IN @entities
+                                  WHERE ReviewScen  =  @entities-ReviewScen
+                                  AND ReviewPeriod = @entities-ReviewPeriod
+
+            INTO TABLE @DATA(lt_existing).
+    IF sy-subrc = 0. " Entry already exists
+      APPEND VALUE #( %cid = entities[ 1 ]-%cid %key = entities[ 1 ]-%key %create = if_abap_behv=>mk-on ) TO failed-usrrevproj.
+
+      APPEND VALUE #( %key = entities[ 1 ]-%key
+                      %create = if_abap_behv=>mk-on
+                      %msg = me->new_message(
+             id = 'ZUSER_REVIEW'
+             number = '000'
+             severity = ms-error
+             v1 = 'Entry already exists' )
+                     ) TO reported-usrrevproj.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD SendReminder.
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+        ENTITY UsrRevProj ALL FIELDS WITH
+        CORRESPONDING #( keys ) RESULT DATA(lt_revproj)
+        ENTITY UsrRevProj BY \_ReviewData
+              ALL FIELDS WITH CORRESPONDING #( keys )
+        RESULT DATA(lt_revdata).
+
+    " Remove invalidated records
+    SORT lt_revdata BY RecordStatus.
+    DELETE lt_revdata WHERE RecordStatus = 'X'.
+
+    " Exclude entries which have already a feedback
+    SORT lt_revdata BY ManagerInput.
+    DELETE lt_revdata WHERE ManagerInput IS NOT INITIAL.
+
+*    DATA(lt_usrs) = lt_revdata. " store users info
+    SORT lt_revdata BY ManagerEmail.
+    DELETE ADJACENT DUPLICATES FROM lt_revdata COMPARING ManagerEmail.
+    IF lt_revdata IS NOT INITIAL.
+      " Populate Mail subject
+      DATA(ls_proj) = lt_revproj[ 1 ].
+      DATA(lv_appurl) = |(ReviewPeriod='{ ls_proj-ReviewPeriod }',ReviewScen='01')|.
+      IF ls_proj-ReminderNo < 2.
+        DATA(lv_remindertxt) = |Reminder #{ ls_proj-ReminderNo + 1 } |.
+*        DATA(lv_str) = REDUCE #( INIT lv_text = ``  FOR ls_data IN lt_revdata NEXT lv_text = lv_text && ls_data-ManagerEmail &&  ', ')." Check for empty mail IDs
+    DATA(lv_subject) = lv_remindertxt && space && ls_proj-RevTxt && ' - ' && ls_proj-ReviewPeriod .
+        lv_remindertxt = |a { lv_remindertxt }|.
+      ELSE.
+        lv_remindertxt = |Final Reminder |.
+        DATA(lv_finalreminder) = abap_true.
+         lv_subject = lv_remindertxt && space && ls_proj-RevTxt && ' - ' && ls_proj-ReviewPeriod .
+      ENDIF.
+      " fill comma separated manager mail IDs from internal table lt_revdata
+      DATA(lv_str) = REDUCE #( INIT lv_text = ``  FOR ls_data IN lt_revdata NEXT lv_text = lv_text && ls_data-ManagerEmail &&  ', ' )." Check for empty mail IDs
+      IF lv_finalreminder IS NOT INITIAL.
+        DATA(lv_userstr) = REDUCE #( INIT lv_text = ``  FOR ls_data IN lt_revdata NEXT lv_text = lv_text && ls_data-Email &&  ', ' ).
+      ENDIF.
+
+      lcl_usr_review_util=>triggerworkflow( iv_mail_receivers =  lv_str iv_subject = lv_subject
+                       iv_deadline = ls_proj-DueDate iv_appurl = lv_appurl
+                       iv_receiversincc = lv_userstr iv_finalreminder = lv_finalreminder ).
+
+      " Update reminder count into table
+      DATA(lv_rem_count) = ls_proj-Reminderno + 1.
+      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+               ENTITY UsrRevProj
+                  UPDATE FROM VALUE #( FOR key IN lt_revproj
+                          ( Uuid = key-Uuid
+                          Reminderno = lv_rem_count
+                          %control = VALUE #( Reminderno = if_abap_behv=>mk-on ) ) )
+                  FAILED failed
+                  REPORTED reported.
+
+
+      APPEND VALUE #( %key = ls_proj-%key
+                      %msg = me->new_message(
+             id = 'ZUSER_REVIEW'
+             number = '002'
+             severity = ms-success
+             v1 = lv_rem_count )
+                     ) TO reported-usrrevproj.
+    ELSE.
+      APPEND VALUE #( %key = ls_proj-%key
+                         %msg = me->new_message(
+                id = 'ZUSER_REVIEW'
+                number = '000'
+                severity = ms-warning
+                v1 = 'No Open Review Items found' )
+                        ) TO reported-usrrevproj.
+    ENDIF.
+
+
+    "Read changed data for action result
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj
+      ALL FIELDS WITH
+      CORRESPONDING #( keys )
+      RESULT DATA(lt_projects).
+
+    result = VALUE #( FOR ls_project IN lt_projects
+             ( %tky   = ls_project-%tky
+               %param = ls_project ) ).
+  ENDMETHOD.
+
+  METHOD precheck_cba_Reviewdata.
+    " check duplicate entries with same mail ids and record is not Invalidated
+    " Get entry being created
+
+    DATA(ls_header) = entities[ 1 ].
+    DATA(lt_revdata) = VALUE #( entities[ 1 ]-%target ).
+    " Get all entries to be checked
+*    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+*         ENTITY UsrRevProj bY \_ReviewData
+*           FIELDS ( RevUuid Email )
+*           WITH CORRESPONDING #(  entities )
+*         RESULT Data(lt_revdata1).
+
+    " Check for duplicate entries with same mail ids
+    SELECT data~email, local~uuid FROM zi_usr_review_data AS data INNER JOIN @lt_revdata
+      AS local  ON     local~Uuid <> data~Uuid
+      AND data~RevUuid = @ls_header-Uuid
+                                    AND upper( local~Email )  = upper( data~Email )
+                                    AND data~RecordStatus <> 'X'
+                                    INTO TABLE @DATA(lt_duplicates). " record is not Invalidated
+    LOOP AT lt_duplicates INTO DATA(ls_duplicate).
+      APPEND VALUE #( %key = entities[ 1 ]-%key %create = if_abap_behv=>mk-on ) TO failed-usrrevproj.
+
+      APPEND VALUE #( %key = entities[ 1 ]-%key
+                      %create = if_abap_behv=>mk-on
+                      %msg = me->new_message(
+             id = 'ZUSER_REVIEW'
+             number = '000'
+             severity = ms-error
+              v1 = 'Entry with same mail id -'
+                    v2 = | { ls_duplicate-email }  already exists|  )
+                     ) TO reported-usrrevproj.
+
+    ENDLOOP.
+  ENDMETHOD.
+
+
+  METHOD projstatus.
+    " Update the initial status for the record as 01
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+          ENTITY UsrRevProj
+          FIELDS ( Status )
+          WITH CORRESPONDING #( keys )
+          RESULT DATA(lt_revproj).
+
+    " Check if status is already set to 01
+    IF lt_revproj[ 1 ]-Status IS INITIAL.
+      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+          ENTITY UsrRevProj
+          UPDATE FROM VALUE #( FOR key IN keys
+                               ( %is_draft = key-%is_draft
+                               uuid = key-Uuid
+                                   Status = '01' " Draft
+                                   %control = VALUE #( Status = if_abap_behv=>mk-on ) ) )
+          FAILED DATA(lt_failed)
+          REPORTED DATA(lt_reported).
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD uploadExcelDataDel.
+*  TYPES: BEGIN OF lty_excel_data,
+*             abap_userid        TYPE string,
+*             hana_userid        TYPE string,
+*             email              TYPE zzemail,
+*             ldap_status        TYPE string,
+*             s_userid           TYPE string,
+*             s_usr_lstlgn       TYPE string,
+*             s_usr_expiry       TYPE string,
+*             name               TYPE string,
+*             ldap_sts_fasd_cmnt TYPE string,
+*             manager_email      TYPE string,
+*             manager_input      TYPE string,
+*             manager_cmnt       TYPE string,
+*             input_shrd_by      TYPE string,
+*           END OF lty_excel_data.
+*    DATA lv_attach_xst TYPE xstring.
+*    DATA: lt_excel_data TYPE STANDARD TABLE OF lty_excel_data.
+*
+*    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+*      ENTITY UsrRevProj
+*      ALL FIELDS WITH
+*      CORRESPONDING #( keys )
+*      RESULT DATA(lt_data).
+*    DATA(ls_key) = keys[ 1 ].
+*    DATA(lv_attachment) = lt_data[ 1 ]-attachment.
+*
+*    " Validate data
+*    IF lv_attachment IS INITIAL.
+*      "Set failed keys
+*      APPEND VALUE #( %cid = ls_key-%cid_ref  )
+*             TO failed-usrrevproj.
+*      APPEND VALUE #( %cid = ls_key-%cid_ref
+*                          %msg = new_message(
+*                                   id       = 'ZUSER_REVIEW'
+*          number   = '000'
+*          v1 = 'Attachment data cannot be blank'
+*          severity = if_abap_behv_message=>severity-error
+*                                 ) )
+*                 TO reported-usrrevproj.
+*      RETURN.
+*    ENDIF.
+*
+*    DATA(lo_pattern) = xco_cp_xlsx_selection=>pattern_builder->simple_from_to( )->get_pattern( ).
+*    lv_attach_xst = lv_attachment.
+*
+*
+** Read excel data
+*    TRY.
+*        DATA(lo_document) = xco_cp_xlsx=>document->for_file_content( lv_attach_xst )->read_access( ).
+*        LOOP AT lo_document->get_workbook( )->worksheet->all->get( ) INTO DATA(lo_sheet).
+*
+*
+*          lo_sheet->select( lo_pattern
+*            )->row_stream(
+*            )->operation->write_to( REF #( lt_excel_data )
+*            )->set_value_transformation( xco_cp_xlsx_read_access=>value_transformation->string_value
+*            )->execute( ).
+*        ENDLOOP.
+*      CATCH cx_xco_runtime_exception INTO DATA(lo_exception).
+*        DATA(lv_message) = lo_exception->get_text( ).
+*        "Set failed keys
+*        APPEND VALUE #( %cid = ls_key-%cid_ref  )
+*               TO failed-usrrevproj.
+*        APPEND VALUE #( %cid = ls_key-%cid_ref
+*                            %msg = new_message(
+*                                     id       = 'ZUSER_REVIEW'
+*            number   = '000'
+*            v1 = lv_message
+*            severity = if_abap_behv_message=>severity-error
+*                                   ) )
+*                   TO reported-usrrevproj.
+*        RETURN.
+*    ENDTRY.
+*
+*    DELETE lt_excel_data INDEX 1. " Remove header data
+*
+*** Remove Duplicate entries.
+*    SORT lt_excel_data BY email.
+*    DELETE ADJACENT DUPLICATES FROM lt_excel_data COMPARING email.
+*
+*** Prepare the datatypes to Delete the data from internal table lt_excel_data to child entity through EML
+*    DATA lt_att_create TYPE TABLE FOR CREATE zr_usr_review_proj\_ReviewData.
+*    DATA lv_date TYPE d.
+*
+*    " Skip invalid entries from processing further
+*    DELETE lt_excel_data WHERE email is INITIAL.
+*
+*" get all entries to be deleted based on email
+*select data~uuid, data~email, data~managerinput FROM zi_usr_review_data AS data INNER JOIN @lt_excel_data as local
+*on upper( local~Email ) = upper( data~Email )
+*and data~RevUuid = @ls_key-Uuid
+*and data~RecordStatus <> 'X' "Ignore Invalidate records
+*where data~RevUuid = @ls_key-Uuid
+*into TABLE @DATA(lt_deletion_data).
+*
+*
+*     " Exclude entries which have already a feedback
+*     data(lt_db_delete) = lt_deletion_data.
+* sort lt_db_delete by managerinput.
+* delete lt_db_delete where managerinput is not initial.
+*
+*    " Delete entries from database where manager input is not shared
+*        MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE ENTITY UsrRevData
+*        DELETE FROM VALUE #( for ls_del in lt_db_delete ( uuid = ls_del-uuid ) ) FAILED DATA(lt_failed)
+*    REPORTED DATA(lt_reported).
+*
+*      " Update entries with invalidate as X where managerinput is not initial
+*    MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+*        ENTITY UsrRevData
+*        UPDATE FROM VALUE #( FOR ls_data IN lt_deletion_data WHERE ( ManagerInput IS NOT INITIAL )
+*                               " Update only entries where manager input is shared
+*                               uuid = ls_data-uuid
+*                             (
+*                               RecordStatus = 'X' " Mark as Invalidated
+*                               %control = VALUE #( RecordStatus = if_abap_behv=>mk-on ) ) )
+*        FAILED lt_failed
+*        REPORTED lt_reported.
+*
+*    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+*   ENTITY UsrRevProj
+*   ALL FIELDS WITH
+*   CORRESPONDING #( keys )
+*   RESULT DATA(lt_file).
+*
+*    result = VALUE #( FOR ls_file IN lt_file ( %tky   = ls_file-%tky
+*
+*                                               %param = ls_file ) ).
+  ENDMETHOD.
+
+  METHOD fieldsDel.
+    " Initiate action based on change in attachment button
+*    IF keys[ 1 ]-%is_draft = '01'.
+
+*      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+*      ENTITY UsrRevProj
+*      EXECUTE uploadexceldataDel
+*      FROM CORRESPONDING #( keys ).
+
+
+    TYPES: BEGIN OF lty_excel_data,
+             abap_userid        TYPE string,
+             hana_userid        TYPE string,
+             email              TYPE zzemail,
+             ldap_status        TYPE string,
+             s_userid           TYPE string,
+             s_usr_lstlgn       TYPE string,
+             s_usr_expiry       TYPE string,
+             name               TYPE string,
+             ldap_sts_fasd_cmnt TYPE string,
+             manager_email      TYPE string,
+             manager_input      TYPE string,
+             manager_cmnt       TYPE string,
+             input_shrd_by      TYPE string,
+           END OF lty_excel_data.
+    DATA lv_attach_xst TYPE xstring.
+    DATA: lt_excel_data TYPE STANDARD TABLE OF lty_excel_data.
+
+    READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+      ENTITY UsrRevProj
+      ALL FIELDS WITH
+      CORRESPONDING #( keys )
+      RESULT DATA(lt_data).
+    DATA(ls_key) = keys[ 1 ].
+    DATA(lv_attachment) = lt_data[ 1 ]-AttachmentDel.
+
+    " Validate data
+    IF lv_attachment IS NOT INITIAL.
+      "Set failed keys
+**      APPEND VALUE #( %cid = ls_key-%cid_ref  )
+**             TO  failed-usrrevproj.
+*      APPEND VALUE #(
+*                          %msg = new_message(
+*                                   id       = 'ZUSER_REVIEW'
+*          number   = '000'
+*          v1 = 'Attachment data cannot be blank'
+*          severity = if_abap_behv_message=>severity-error
+*                                 ) )
+*                 TO reported-usrrevproj.
+
+
+
+      DATA(lo_pattern) = xco_cp_xlsx_selection=>pattern_builder->simple_from_to( )->get_pattern( ).
+      lv_attach_xst = lv_attachment.
+
+
+* Read excel data
+      TRY.
+          DATA(lo_document) = xco_cp_xlsx=>document->for_file_content( lv_attach_xst )->read_access( ).
+          LOOP AT lo_document->get_workbook( )->worksheet->all->get( ) INTO DATA(lo_sheet).
+
+
+            lo_sheet->select( lo_pattern
+              )->row_stream(
+              )->operation->write_to( REF #( lt_excel_data )
+              )->set_value_transformation( xco_cp_xlsx_read_access=>value_transformation->string_value
+              )->execute( ).
+          ENDLOOP.
+        CATCH cx_xco_runtime_exception INTO DATA(lo_exception).
+          DATA(lv_message) = lo_exception->get_text( ).
+          "Set failed keys
+*        APPEND VALUE #( %cid = ls_key-%cid_ref  )
+*               TO failed-usrrevproj.
+          APPEND VALUE #(
+                              %msg = new_message(
+                                       id       = 'ZUSER_REVIEW'
+              number   = '000'
+              v1 = lv_message
+              severity = if_abap_behv_message=>severity-error
+                                     ) )
+                     TO reported-usrrevproj.
+          RETURN.
+      ENDTRY.
+
+      DELETE lt_excel_data INDEX 1. " Remove header data
+
+** Remove Duplicate entries.
+      SORT lt_excel_data BY email.
+      DELETE ADJACENT DUPLICATES FROM lt_excel_data COMPARING email.
+
+** Prepare the datatypes to Delete the data from internal table lt_excel_data to child entity through EML
+      DATA lt_att_create TYPE TABLE FOR CREATE zr_usr_review_proj\_ReviewData.
+      DATA lv_date TYPE d.
+
+      " Skip invalid entries from processing further
+      DELETE lt_excel_data WHERE email IS INITIAL.
+
+      " get all entries to be deleted based on email
+      SELECT data~uuid, data~email, data~managerinput FROM zi_usr_review_data AS data INNER JOIN @lt_excel_data AS local
+      ON upper( local~Email ) = upper( data~Email )
+      AND data~RevUuid = @ls_key-Uuid
+      AND data~RecordStatus <> 'X' "Ignore Invalidate records
+      WHERE data~RevUuid = @ls_key-Uuid
+      INTO TABLE @DATA(lt_deletion_data).
+
+
+      " Exclude entries which have already a feedback
+      DATA(lt_db_delete) = lt_deletion_data.
+      SORT lt_db_delete BY managerinput.
+      DELETE lt_db_delete WHERE managerinput IS NOT INITIAL.
+      IF NOT lt_db_delete IS INITIAL.
+        " Delete entries from database where manager input is not shared
+        MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE ENTITY UsrRevData
+        DELETE FROM VALUE #( FOR ls_del IN lt_db_delete ( uuid = ls_del-uuid ) ) FAILED DATA(lt_failed)
+    REPORTED DATA(lt_reported).
+      ENDIF.
+
+      " Update entries with invalidate as X where managerinput is not initial
+      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+          ENTITY UsrRevData
+          UPDATE FROM VALUE #( FOR ls_data IN lt_deletion_data WHERE ( ManagerInput IS NOT INITIAL )
+                                 " Update only entries where manager input is shared
+                                 uuid = ls_data-uuid
+                               (
+                                 RecordStatus = 'X' " Mark as Invalidated
+                                 %control = VALUE #( RecordStatus = if_abap_behv=>mk-on ) ) )
+          FAILED lt_failed
+          REPORTED lt_reported.
+
+      " Update attachment field to blank after processing
+      MODIFY ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+         ENTITY UsrRevProj
+         UPDATE FROM VALUE #( FOR key IN keys
+                                ( Uuid = key-Uuid
+                                  AttachmentDel = ''
+                            MimetypeDel = ''
+                                  %control = VALUE #( AttachmentDel = if_abap_behv=>mk-on
+                                  MimetypeDel = if_abap_behv=>mk-on ) ) )
+         FAILED DATA(lt_failed_update)
+         REPORTED DATA(lt_reported_update).
+
+      READ ENTITIES OF zr_usr_review_proj IN LOCAL MODE
+     ENTITY UsrRevProj
+     ALL FIELDS WITH
+     CORRESPONDING #( keys )
+     RESULT DATA(lt_file).
+
+*    result = VALUE #( FOR ls_file IN lt_file ( %tky   = ls_file-%tky
+*
+*                                               %param = ls_file ) ).
+
+    ENDIF.
+  ENDMETHOD.
+
+ENDCLASS.
+
+CLASS lcl_usr_review_util IMPLEMENTATION.
+
+  METHOD triggerworkflow.
+    " Send content to managers for review
+    " convert iv_finalreminder to boolean of true or false
+    data(lv_final_bool) = cond #(
+                            when iv_finalreminder = abap_false then 'false'
+                            else 'true' ).
+    TRY.
+        DATA(lo_destination) = cl_http_destination_provider=>create_by_comm_arrangement(
+          comm_scenario = 'ZCOMM_SBPA_WORKFLOW'
+          service_id    = 'ZAPI_SBPA_WORKFLOW_OUT_REST'
+        ).
+        DATA(lo_http_client) = cl_web_http_client_manager=>create_by_http_destination( i_destination = lo_destination ).
+        DATA(lo_request) = lo_http_client->get_http_request( ).
+        lo_request->set_header_field( i_name = 'Content-type' i_value = 'application/json; charset=UTF-8' ).
+        " get DD/MM/YYYY format from iv_deadline
+        IF iv_deadline IS NOT INITIAL.
+          cl_abap_datfm=>conv_date_int_to_ext(
+            EXPORTING im_datint = CONV #( iv_deadline )
+            im_datfmdes = '1'
+            IMPORTING ex_datext = DATA(lv_deadline) ). " 1 for DD/MM/YYYY format
+        ENDIF.
+
+        DATA(lv_body) = '{ "definitionId": "eu20.d223we4c.itusersreviewv1.initiateReview",' &&
+            '"context": { "appactionurl": "' && iv_appURL &&
+            '","receiver":"' && iv_mail_receivers &&
+            '","remindertxt":"' && iv_remindetxt &&
+            '","extractdate":"' && lv_deadline  &&
+             '","receiversincc":"' && iv_receiversincc  &&
+              '","finalreminder":' && lv_final_bool  &&
+            ',"subject":"' && iv_subject && '" }}'.
+        lo_request->set_text( lv_body ).
+
+        DATA(lo_response) = lo_http_client->execute( i_method = if_web_http_client=>post ).
+        DATA(lv_json_results) = lo_response->get_text( ).
+
+      CATCH cx_root INTO DATA(lx_exception).
+        lv_json_results = lx_exception->get_longtext( ) .
+    ENDTRY.
+
+  ENDMETHOD.
+ENDCLASS.
