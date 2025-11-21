@@ -1,0 +1,443 @@
+Root 
+
+@AccessControl.authorizationCheck: #CHECK
+@Metadata.allowExtensions: true
+@EndUserText.label: 'Review Project root Entity'
+define root view entity ZR_USR_REVIEW_PROJ
+  as select from zusr_rview_proj as UsrRevProj composition [0..*] of ZI_USR_REVIEW_DATA as _ReviewData
+  association[1..*] to ZI_USR_REVIEW_DATA as _ReviewDataAssoc on $projection.Uuid =  _ReviewDataAssoc.RevUuid
+  association [1..*] to ZI_USR_REVIEW_STATUS as _StatusTxt on $projection.Status = _StatusTxt.StatusCd
+  and $projection.ReviewScen = _StatusTxt.ReviewScen 
+   association [1..*] to ZI_READ_DOMAIN as _ReviewTxt on _ReviewTxt.domain_name = 'ZZREV_SCEN'
+   and $projection.ReviewScen = _ReviewTxt.value_low
+   association[1..*] to I_BusinessUserBasic as _bpdataCrt on _bpdataCrt.UserID = $projection.LocalCreatedBy 
+   association[1..*] to I_BusinessUserBasic as _bpdataChg on _bpdataChg.UserID = $projection.LocalLastChangedBy 
+{
+  key uuid as Uuid,
+  review_scen as ReviewScen,
+  review_period as ReviewPeriod,
+  file_name as FileName,
+  attachment as Attachment,
+  mimetype as Mimetype,
+  upload_dt as UploadDt,
+  completed_dt as CompletedDt,
+//  @ObjectModel.text.association: '_StatusTxt'
+  status as Status, 
+  due_dt as DueDate, 
+  reminder_no as ReminderNo,
+_ReviewTxt(p_domname:'ZZREV_SCEN').text as RevTxt,
+case status
+  when '02'  then 2    -- 'Initiated'   | 2: Yellow colour
+  when '03'  then 3    -- 'Completed'   | 3: green colour
+            else 4    -- 'nothing'    | 0: unknown
+end                   as StatusCriticality,
+@Semantics.eMail.address: true
+_bpdataCrt._WorkplaceAddress.DefaultEmailAddress as LastCrtMailId,
+@Semantics.eMail.address: true
+_bpdataChg._WorkplaceAddress.DefaultEmailAddress as LastChgMailId,
+  @Semantics.user.createdBy: true
+  local_created_by as LocalCreatedBy,
+  @Semantics.systemDateTime.createdAt: true
+  local_created_at as LocalCreatedAt,
+  @Semantics.user.localInstanceLastChangedBy: true
+  local_last_changed_by as LocalLastChangedBy,
+  @Semantics.systemDateTime.localInstanceLastChangedAt: true
+  local_last_changed_at as LocalLastChangedAt,
+  @Semantics.systemDateTime.lastChangedAt: true
+  last_changed_at as LastChangedAt,
+  file_name_del as FileNameDel,
+  attachment_del as AttachmentDel,
+  mimetype_del as MimetypeDel,
+  _ReviewData,
+  _StatusTxt,
+  _ReviewTxt
+  //,
+  //_ReviewDataAssoc  Abhijeet 
+  
+  
+}
+******************
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'IT User Review Data'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity ZI_USR_REVIEW_DATA
+  as select from zusr_rview_data as ReviewData
+  association        to parent ZR_USR_REVIEW_PROJ as _reviewProj on  $projection.RevUuid = _reviewProj.Uuid
+  association [1..*] to ZI_READ_DOMAIN            as _MgrInput   on  _MgrInput.domain_name    = 'ZZMANAGER_ACT'
+                                                                 and $projection.ManagerInput = _MgrInput.value_low
+  association [1..1] to I_BusinessUserBasic       as _bpdata     on  _bpdata.UserID = $session.user
+  association [1..1] to I_BusinessUserBasic       as _bpdataUsr     on  _bpdataUsr.UserID = $projection.InputShrdBy
+  association [1..1] to I_BusinessUserBasic       as _bpdataCrt  on  _bpdataCrt.UserID = $projection.LocalCreatedBy
+  association [1..1] to I_BusinessUserBasic       as _bpdataChg  on  _bpdataChg.UserID = $projection.LocalLastChangedBy
+
+{
+  key uuid                                                                                    as Uuid,
+      rev_uuid                                                                                as RevUuid,
+      abap_userid                                                                             as AbapUserid,
+      hana_userid                                                                             as HanaUserid,
+      upper( email )                                                                          as Email,
+      ldap_status                                                                             as LdapStatus,
+      s_userid                                                                                as SUserid,
+      s_usr_lstlgn                                                                            as SUsrLstlgn,
+      s_usr_expiry                                                                            as SUsrExpiry,
+      name                                                                                    as Name,
+      ldap_sts_fasd_cmnt                                                                      as LdapStsFasdCmnt,
+      upper(manager_email)                                                                    as ManagerEmail,
+      manager_input                                                                           as ManagerInput,
+      manager_cmnt                                                                            as ManagerCmnt,
+      input_shrd_by                                                                           as InputShrdBy,
+      _MgrInput(p_domname:'ZZMANAGER_ACT').text                                               as MgrInputTxt,
+      cast( concat( 'https://helpdesk3.hm.com/account/user/',ldap_status) as abap.char(350) ) as LDAPUrl,
+      case record_status
+      when 'X' then 1  // Invalidated
+      else ( case manager_input
+      when '' then 2 //Orange - In Progress
+      else 3  end ) //Green - Completed
+             end                                                                              as MgrInputSts, //3- Completed
+     record_status as RecordStatus,
+ cast( case record_status
+      when 'X' then 'Invalidated'  // Invalidated
+      else ( case manager_input
+      when '' then 'In Progress' //Orange - In Progress
+      else 'Completed'  end ) //Green - Completed
+             end as abap.char(19) )                                                           as RecordStsTxt,
+      @Semantics.eMail.address: true
+      _bpdataCrt._WorkplaceAddress.DefaultEmailAddress                                        as LastCrtMailId,
+      @Semantics.eMail.address: true
+      _bpdataChg._WorkplaceAddress.DefaultEmailAddress                                        as LastChgMailId,
+      invalid_reason                                                                          as InvalidationReason,
+      @Semantics.user.createdBy: true
+      local_created_by                                                                        as LocalCreatedBy,
+      @Semantics.systemDateTime.createdAt: true
+      local_created_at                                                                        as LocalCreatedAt,
+      @Semantics.user.lastChangedBy: true
+      local_last_changed_by                                                                   as LocalLastChangedBy,
+      @Semantics.systemDateTime.localInstanceLastChangedAt: true
+      local_last_changed_at                                                                   as LocalLastChangedAt,
+      @Semantics.systemDateTime.lastChangedAt: true
+      last_changed_at                                                                         as LastChangedAt,
+      upper(_bpdata._WorkplaceAddress.DefaultEmailAddress)                                           as CurrentUsrMailId,
+      _bpdataUsr._WorkplaceAddress.DefaultEmailAddress                                        as InputShrdByMailId,
+      _reviewProj,
+      _MgrInput
+
+}
+**********************************
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'IT User Review Status info'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+@ObjectModel.resultSet.sizeCategory: #XS
+define root view entity ZI_USR_REVIEW_STATUS as select from zusr_rview_sts
+   association [1..*] to ZI_READ_DOMAIN as _ReviewTxt on _ReviewTxt.domain_name = 'ZZREV_SCEN'
+   and $projection.ReviewScen = _ReviewTxt.value_low
+{
+    
+    key review_scen as ReviewScen,    
+    @Semantics.language: true
+    @UI.hidden : true
+    key lang as Lang,
+    key status_cd as StatusCd,
+    @Semantics.text: true
+    status_txt as StatusTxt,
+    _ReviewTxt(p_domname:'ZZREV_SCEN').text as RevTxt
+//    _ReviewProj
+}
+
+**********************************
+@AbapCatalog.viewEnhancementCategory: [#NONE]
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+@EndUserText.label: 'Read Domain values'
+@Metadata.ignorePropagatedAnnotations: true
+@ObjectModel.usageType:{
+    serviceQuality: #X,
+    sizeCategory: #S,
+    dataClass: #MIXED
+}
+define view entity ZI_READ_DOMAIN with parameters p_domname : abap.char(30)
+       as select from DDCDS_CUSTOMER_DOMAIN_VALUE_T( p_domain_name: $parameters.p_domname ) 
+       {
+    key domain_name,
+    key value_position,
+    @Semantics.language: true
+    key language,
+    value_low,
+    @Semantics.text: true
+    text
+} where language = $session.system_language
+
+*************************
+Metadata extension -
+
+@Metadata.layer: #CORE
+@UI.headerInfo.title.type: #STANDARD
+@UI.headerInfo.typeName: 'Review Project'
+@UI.headerInfo.typeNamePlural: 'Review Projects'
+@UI.headerInfo.title.value: 'ReviewPeriod'
+@UI.headerInfo.title.label: 'Review Project'
+@UI.headerInfo.description.type: #STANDARD
+@UI.presentationVariant: [ {  
+sortOrder: [
+      {
+        by: 'UploadDt',
+        direction: #DESC
+      }  ] } ]
+@UI.lineItem: [{criticality: 'StatusCriticality'}] 
+annotate view ZC_USR_REVIEW_PROJ with
+{
+  @UI.facet: [ {
+    label: 'General Information', 
+    id: 'GeneralInfo', 
+    purpose: #STANDARD, 
+    position: 10 , 
+    type: #IDENTIFICATION_REFERENCE
+  } ,
+  {
+          id: 'idDataPoint',
+          purpose: #HEADER,
+          type: #DATAPOINT_REFERENCE,
+          position: 20,
+          targetQualifier: 'StatusInfo'
+      },
+        {
+          id: 'idDataPoint1',
+          purpose: #HEADER,
+          type: #DATAPOINT_REFERENCE,
+          position: 200,
+          targetQualifier: 'DueInfo'
+      },
+      {
+          id: 'idDataPoint2',
+          purpose: #HEADER,
+          type: #DATAPOINT_REFERENCE,
+          position: 200,
+          targetQualifier: 'RemInfo'
+      },
+   { id:'C', position: 200, type: #LINEITEM_REFERENCE,
+    label: 'Review Data', targetElement: '_ReviewData' }]
+  @EndUserText.label: 'Review Scenario'
+  @UI.identification: [ {
+    position: 20  } ,{ type: #FOR_ACTION, dataAction: 'markAsCompleted' ,label: 'Mark as Completed'},
+  { type: #FOR_ACTION, dataAction: 'initiateWorkflow', label: 'Initiate Workflow'},
+  { type: #FOR_ACTION, dataAction: 'SendReminder', label: 'Send Reminder' }   ]
+  @UI.lineItem: [  { 
+    position: 20 ,importance: #HIGH
+  },{ type: #FOR_ACTION, dataAction: 'markAsCompleted', label: 'Mark as Completed'},
+ 
+  { type: #FOR_ACTION, dataAction: 'initiateWorkflow', label: 'Initiate Workflow'},
+  { type: #FOR_ACTION, dataAction: 'SendReminder', label: 'Send Reminder'}  ]
+  @Consumption.valueHelpDefinition: [{ entity: 
+                {name: 'ZI_USR_REVIEW_SCEN_DOM_V4' , element: 'ReviewScen' }}]
+  @UI.textArrangement: #TEXT_ONLY  
+  ReviewScen;
+
+  @EndUserText.label: 'Review Period'
+  @UI.identification: [ {
+    position: 30 
+  } ]
+  @UI.lineItem: [ {
+    position: 30 
+  } ]
+  @UI.selectionField: [ {
+    position: 30 
+  } ]
+       @Consumption.valueHelpDefinition: [{ entity: 
+                {name: 'ZI_USR_REVIEW_SCEN_V4' , element: 'ReviewPrd' }
+                }]
+  ReviewPeriod;
+  @EndUserText.label: 'File Name'
+    @UI.lineItem: [ {
+    position: 45 , 
+    label: 'File Name'
+  } ]
+  @UI.hidden
+  FileName;
+  
+  @EndUserText.label: 'Mass Upload'
+  @UI.identification: [ {
+    position: 50 
+  } ]
+  
+  Attachment;
+  
+  @UI.hidden
+  Mimetype;
+  
+  ////////////////////////////////////////
+  @EndUserText.label: 'Deletion File Name'
+    @UI.lineItem: [ {
+    position: 47 
+  } ]
+  @UI.hidden
+  FileNameDel;
+  
+  @EndUserText.label: 'Mass Delete Upload'
+  @UI.identification: [ {
+    position: 55 
+  } ]
+  
+  AttachmentDel;
+  
+  @UI.hidden
+  MimetypeDel;
+  ////////////////////////////////////////
+  
+  
+  @EndUserText.label: 'Uploaded Date'
+  @UI.identification: [ {
+    position: 70 
+  } ]
+  @UI.lineItem: [ {
+    position: 70 , 
+    label: 'Upload Date'
+  } ]
+  UploadDt;
+  
+  @EndUserText.label: 'Completed Date'
+  @UI.identification: [ {
+    position: 80 
+  } ]
+  @UI.lineItem: [ {
+    position: 80 , 
+    label: 'Completed Date'
+  } ]
+  CompletedDt; 
+   @EndUserText.label: 'Review Status'
+  @UI.lineItem: [ {
+    position: 90 , 
+    label: 'Status',criticality: 'StatusCriticality'
+  } ]
+  @UI.selectionField: [ {
+    position: 90 
+  } ]
+  @Consumption.valueHelpDefinition: [{entity.name: 'ZI_USR_REVIEW_STATUS_V4', entity.element: 'StatusCd'}]
+  @UI.textArrangement: #TEXT_ONLY 
+  @UI.dataPoint: { qualifier: 'StatusInfo', title: 'Review Status', criticality: 'StatusCriticality' } 
+  Status; 
+  @UI.dataPoint: { qualifier: 'DueInfo', title: 'Approver Deadline' } 
+ @UI.identification: [ {
+    position: 85 
+  } ]
+   @EndUserText.label: 'Approver Deadline'
+  DueDate; 
+              @UI.identification: [  { type: #AS_DATAPOINT,criticality: 'StatusCriticality',
+    position: 145 ,   label: 'Feedback Progress'
+  } ]
+      @UI.lineItem: [ {position: 145 ,
+//    criticality: 'StatusCriticality',
+    valueQualifier: 'Progress',
+    
+    type: #AS_DATAPOINT
+  }]
+   @EndUserText.label: 'Feedback Progress' 
+//    @UI.dataPoint: { targetValue: 100, visualization: #PROGRESS }
+    @UI.dataPoint: {
+  title: 'Feedback Progress',
+  description: '% of feedback received',
+  criticalityValue: #POSITIVE,
+//  targetValue: 'ReviewTotal',
+  targetValueElement: 'ReviewTotal',
+//   maximumValue: 'ReviewTotal',
+  visualization: #PROGRESS //#PROGRESS
+}
+    ReviewProgress;
+    @UI.hidden
+    ReviewTotal;
+     @UI.dataPoint: { qualifier: 'RemInfo', title: 'Reminders Sent' } 
+    ReminderNo;
+  @UI.identification: [ {
+    position: 100 
+  } ]
+  LocalCreatedBy;
+  
+  @UI.identification: [ {
+    position: 110 
+  } ]
+  LocalCreatedAt;
+  
+  @UI.identification: [ {
+    position: 120 
+  } ]
+  LocalLastChangedBy;
+  
+  
+  @UI.identification: [ {
+    position: 140 
+  } ]
+  LastChangedAt;
+}
+**************************
+CDS for main 
+@Metadata.allowExtensions: true
+@EndUserText.label: 'Root entity for Rerview Project'
+@AccessControl.authorizationCheck: #CHECK
+@ObjectModel.semanticKey: [ 'ReviewScen','ReviewPeriod' ]
+define root view entity ZC_USR_REVIEW_PROJ
+  provider contract transactional_query
+  as projection on ZR_USR_REVIEW_PROJ
+{
+  key     Uuid,
+          @ObjectModel.text.element: ['RevTxt']
+          ReviewScen,
+          ReviewPeriod,
+          FileName,
+          @Semantics.largeObject : { mimeType: 'Mimetype',
+          fileName: 'Filename',
+          contentDispositionPreference: #INLINE }
+          Attachment,
+          Mimetype,
+          UploadDt,
+          CompletedDt,
+          @Consumption.valueHelpDefinition: [{entity.name: 'ZI_USR_REVIEW_STATUS', entity.element: 'StatusCd'}]
+          @UI.textArrangement: #TEXT_ONLY
+          @ObjectModel.text.element: ['StatusTxt']
+          //      @ObjectModel.foreignKey.association: '_StatusTxt'
+          Status,
+          DueDate,
+          ReminderNo,
+          @ObjectModel.virtualElementCalculatedBy: 'ABAP:ZCL_USR_REVIEW_CALC'
+  virtual ReviewProgress : abap.int2,
+          @ObjectModel.virtualElementCalculatedBy: 'ABAP:ZCL_USR_REVIEW_CALC'
+  virtual ReviewTotal    : abap.int2,
+          _StatusTxt.StatusTxt as StatusTxt : localized,
+          @ObjectModel.text.element: ['LastCrtMailId']
+          @UI.textArrangement: #TEXT_ONLY
+          LocalCreatedBy,
+          LocalCreatedAt,
+          @ObjectModel.text.element: ['LastChgMailId']
+          @UI.textArrangement: #TEXT_ONLY
+          LocalLastChangedBy,
+          LocalLastChangedAt,
+          LastChangedAt,
+          @Semantics.text: true
+          RevTxt,
+          StatusCriticality,
+          @Semantics.text: true
+          LastCrtMailId,
+          @Semantics.text: true
+          LastChgMailId,
+          FileNameDel,
+          @Semantics.largeObject : { mimeType: 'MimetypeDel',
+          fileName: 'FileNameDel',
+          contentDispositionPreference: #INLINE }
+          AttachmentDel,
+          MimetypeDel,
+          _ReviewData : redirected to composition child ZC_USR_REVIEW_DATA,
+          _ReviewTxt
+          //      _StatusTxt
+
+
+}
+
+and behiur defination and implementation is for ZR_USR_REVIEW_PROJ then project is used in behaviour of ZC_USR_REVIEW_PROJ for the ZR_USR_REVIEW_PROJ.
