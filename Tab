@@ -1,0 +1,269 @@
+Table Header - as Project
+
+@EndUserText.label : 'IT Users Review Project'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rview_proj {
+
+  key client            : abap.clnt not null;
+  key uuid              : sysuuid_x16 not null;
+  review_scen           : zzrev_scen;
+  review_period         : abap.char(8);
+  file_name             : zzfilename;
+  attachment            : abap.rawstring(0);
+  mimetype              : abap.char(128);
+  upload_dt             : abap.dats;
+  completed_dt          : abap.dats;
+  status                : abap.char(2);
+  due_dt                : abap.dats;
+  reminder_no           : abap.int2;
+  file_name_del         : zzfilename;
+  attachment_del        : abap.rawstring(0);
+  mimetype_del          : abap.char(128);
+  local_created_by      : abp_creation_user;
+  local_created_at      : abp_creation_tstmpl;
+  local_last_changed_by : abp_locinst_lastchange_user;
+  local_last_changed_at : abp_locinst_lastchange_tstmpl;
+  last_changed_at       : abp_lastchange_tstmpl;
+
+}
+
+
+Item table as data table for same 
+@EndUserText.label : 'Review Data'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rview_data {
+
+  key client            : abap.clnt not null;
+  key uuid              : sysuuid_x16 not null;
+  rev_uuid              : sysuuid_x16 not null;
+  abap_userid           : syuname;
+  hana_userid           : syuname;
+  email                 : zzemail;
+  ldap_status           : char256;
+  s_userid              : abap.char(11);
+  s_usr_lstlgn          : abap.dats;
+  s_usr_expiry          : abap.dats;
+  name                  : adfullname;
+  ldap_sts_fasd_cmnt    : abap.char(100);
+  manager_email         : zzemail;
+  manager_input         : zzmanager_act;
+  manager_cmnt          : abap.char(100);
+  input_shrd_by         : syuname;
+  record_status         : abap.char(1);
+  invalid_reason        : abap.char(100);
+  local_created_by      : abp_creation_user;
+  local_created_at      : abp_creation_tstmpl;
+  local_last_changed_by : abp_locinst_lastchange_user;
+  local_last_changed_at : abp_locinst_lastchange_tstmpl;
+  last_changed_at       : abp_lastchange_tstmpl;
+
+}
+
+
+Scenario Table - for all sceanrio
+@EndUserText.label : 'Review Scenario possible values'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #C
+@AbapCatalog.dataMaintenance : #ALLOWED
+define table zusr_rview_scen {
+
+  key client      : abap.clnt not null;
+  key review_scen : zzrev_scen not null;
+  key review_prd  : zzrev_prd not null;
+  disabled        : abap_boolean;
+
+}
+
+Status Table -
+@EndUserText.label : 'Review Status possible values'
+@AbapCatalog.enhancement.category : #NOT_EXTENSIBLE
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rview_sts {
+
+  key client      : abap.clnt not null;
+  key lang        : spras not null;
+  key review_scen : zzrev_scen not null;
+  key status_cd   : abap.char(2) not null;
+  status_txt      : abap.char(50);
+
+}
+
+
+**************
+Draft table used for behavior
+@EndUserText.label : 'Draft table for entity ZR_USR_RVIEW_PROJ_APR'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rvw_proj_d1 {
+
+  key mandt          : mandt not null;
+  key mgremail       : zzemail not null;
+  key uuid           : sysuuid_x16 not null;
+  reviewscen         : zzrev_scen;
+  reviewperiod       : abap.char(8);
+  filename           : zzfilename;
+  attachment         : abap.rawstring(0);
+  mimetype           : abap.char(128);
+  uploaddt           : abap.dats;
+  completeddt        : abap.dats;
+  status             : abap.char(2);
+  duedate            : abap.dats;
+  revtxt             : val_text;
+  statuscriticality  : abap.int1;
+  lastcrtmailid      : zzemail;
+  lastchgmailid      : zzemail;
+  localcreatedby     : abp_creation_user;
+  localcreatedat     : abp_creation_tstmpl;
+  locallastchangedby : abp_locinst_lastchange_user;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+  lastchangedat      : abp_lastchange_tstmpl;
+  "%admin"           : include sych_bdl_draft_admin_inc;
+
+}
+***********
+Draft table -
+@EndUserText.label : 'Draft table for entity ZI_USR_RVIEW_DATA_APR'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rvw_data_d1 {
+
+  key mandt          : mandt not null;
+  key uuid           : sysuuid_x16 not null;
+  revuuid            : sysuuid_x16;
+  abapuserid         : syuname;
+  hanauserid         : syuname;
+  email              : zzemail;
+  ldapstatus         : char256;
+  suserid            : abap.char(11);
+  susrlstlgn         : abap.dats;
+  susrexpiry         : abap.dats;
+  name               : adfullname;
+  ldapstsfasdcmnt    : abap.char(100);
+  manageremail       : zzemail;
+  managerinput       : zzmanager_act;
+  managercmnt        : abap.char(100);
+  inputshrdby        : syuname;
+  mgrinputtxt        : val_text;
+  ldapurl            : abap.char(350);
+  mgrinputsts        : abap.int1;
+  recordstatus       : abap.char(1);
+  lastcrtmailid      : zzemail;
+  lastchgmailid      : zzemail;
+  localcreatedby     : abp_creation_user;
+  localcreatedat     : abp_creation_tstmpl;
+  locallastchangedby : abp_locinst_lastchange_user;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+  lastchangedat      : abp_lastchange_tstmpl;
+  currentusrmailid   : zzemail;
+  inputshrdbymailid  : zzemail;
+  invalid_reason     : abap.char(100);
+  "%admin"           : include sych_bdl_draft_admin_inc;
+
+}
+********************
+@EndUserText.label : 'Draft Database Table for ZUSR_RVEW_PROJ_D'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rvew_proj_d {
+
+  key mandt          : mandt not null;
+  key uuid           : sysuuid_x16 not null;
+  reviewscen         : zzrev_scen;
+  reviewperiod       : abap.char(8);
+  filename           : zzfilename;
+  attachment         : abap.rawstring(0);
+  mimetype           : abap.char(128);
+  uploaddt           : abap.dats;
+  completeddt        : abap.dats;
+  status             : abap.char(2);
+  duedate            : abap.dats;
+  reminderno         : abap.int2;
+  revtxt             : val_text;
+  statuscriticality  : abap.int1;
+  lastcrtmailid      : zzemail;
+  lastchgmailid      : zzemail;
+  localcreatedby     : abp_creation_user;
+  localcreatedat     : abp_creation_tstmpl;
+  locallastchangedby : abp_locinst_lastchange_user;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+  lastchangedat      : abp_lastchange_tstmpl;
+  filenamedel        : zzfilename;
+  attachmentdel      : abap.rawstring(0);
+  mimetypedel        : abap.char(128);
+  "%admin"           : include sych_bdl_draft_admin_inc;
+
+}
+**********************
+@EndUserText.label : 'Draft table for entity ZI_USR_REVIEW_DATA'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rview_dat_d {
+
+  key mandt          : mandt not null;
+  key uuid           : sysuuid_x16 not null;
+  revuuid            : sysuuid_x16;
+  abapuserid         : syuname;
+  hanauserid         : syuname;
+  email              : zzemail;
+  ldapstatus         : char256;
+  suserid            : abap.char(11);
+  susrlstlgn         : abap.dats;
+  susrexpiry         : abap.dats;
+  name               : adfullname;
+  ldapstsfasdcmnt    : abap.char(100);
+  manageremail       : zzemail;
+  managerinput       : zzmanager_act;
+  managercmnt        : abap.char(100);
+  inputshrdby        : syuname;
+  mgrinputtxt        : val_text;
+  ldapurl            : abap.char(350);
+  mgrinputsts        : abap.int1;
+  recordstatus       : abap.char(1);
+  recordststxt       : abap.char(19);
+  lastcrtmailid      : zzemail;
+  lastchgmailid      : zzemail;
+  invalidationreason : abap.char(100);
+  localcreatedby     : abp_creation_user;
+  localcreatedat     : abp_creation_tstmpl;
+  locallastchangedby : abp_locinst_lastchange_user;
+  locallastchangedat : abp_locinst_lastchange_tstmpl;
+  lastchangedat      : abp_lastchange_tstmpl;
+  currentusrmailid   : zzemail;
+  inputshrdbymailid  : zzemail;
+  "%admin"           : include sych_bdl_draft_admin_inc;
+
+}
+*****************
+@EndUserText.label : 'Draft table for entity ZI_USR_REVIEW_STATUS'
+@AbapCatalog.enhancement.category : #EXTENSIBLE_ANY
+@AbapCatalog.tableCategory : #TRANSPARENT
+@AbapCatalog.deliveryClass : #A
+@AbapCatalog.dataMaintenance : #RESTRICTED
+define table zusr_rview_sts_d {
+
+  key mandt      : mandt not null;
+  key reviewscen : zzrev_scen not null;
+  key lang       : spras not null;
+  key statuscd   : abap.char(2) not null;
+  statustxt      : abap.char(50);
+  "%admin"       : include sych_bdl_draft_admin_inc;
+
+}
+***********************
